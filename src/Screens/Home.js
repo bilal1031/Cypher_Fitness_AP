@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Navbar,
   Container,
@@ -12,6 +12,8 @@ import {
   Spinner,
 } from "react-bootstrap";
 import firebase from "firebase";
+import $ from "jquery";
+import imageCompression from "browser-image-compression";
 
 import "../App.css";
 
@@ -21,6 +23,7 @@ function Home(props) {
   const [data, setData] = React.useState([]);
   const [videoURL, setVideoURL] = React.useState("");
   const [show, setShow] = React.useState(false);
+  const [isUploading, setUploading] = useState(false);
   const [isLoading, setLoading] = React.useState(true);
   const [activeState, setActiveState] = React.useState([1, 0, 0]);
 
@@ -44,6 +47,72 @@ function Home(props) {
   const handleClose = () => setShow(false);
   const handleShow = () => setShow(true);
 
+  const handleUploadPicture = async () => {
+    // console.log(`originalFile size ${image.size / 1024 / 1024} MB`);
+    if (isNaN(image.size)) return alert("Choose an image!");
+    setUploading(true);
+
+    try {
+      const compressedFile = await imageCompression(image, {
+        maxSizeMB: 1,
+        maxWidthOrHeight: 1920,
+        useWebWorker: true,
+      });
+
+      // console.log(
+      //   "compressedFile instanceof Blob",
+      //   compressedFile instanceof Blob
+      // ); // true
+      // console.log(
+      //   `compressedFile size ${compressedFile.size / 1024 / 1024} MB`
+      // );
+
+      firebase
+        .storage()
+        .ref("images/Cypher" + Date.now())
+        .put(compressedFile)
+        .then((snapshot) => {
+          snapshot.ref.getDownloadURL().then((url) => {
+            firebase
+              .firestore()
+              .collection("images")
+              .add({
+                link: url,
+                timestamp: Date.now(),
+                day: getDay(),
+              })
+              .then(() => {
+                firebase
+                  .firestore()
+                  .collection("images")
+                  .doc("stats")
+                  .update({
+                    total: firebase.firestore.FieldValue.increment(1),
+                  })
+                  .then(() => {
+                    handleClose();
+                    setUploading(false);
+                    setImage(NaN);
+                  })
+                  .catch(() => {
+                    setUploading(false);
+                  });
+              })
+              .catch((error) => {
+                setUploading(false);
+                alert("Image Uploading Failed !!");
+              });
+          });
+        })
+        .catch((error) => {
+          setUploading(false);
+          alert("Image Uploading Failed !!");
+        });
+    } catch (error) {
+      alert("Image Uploading Failed !!");
+    }
+  };
+
   const handleVideoClick = () => {
     setState(true);
     setLoading(true);
@@ -52,44 +121,132 @@ function Home(props) {
     firebase
       .firestore()
       .collection("videos")
-      .get()
-      .then((querySnapshot) => {
+      .onSnapshot((querySnapshot) => {
         let temp = [];
         querySnapshot.forEach((doc) => {
           if (doc.data().thumbnail !== undefined)
             temp.push({ id: doc.id, ...doc.data() });
         });
         setData(temp);
-      })
-      .finally(() => setLoading(false));
+        setLoading(false);
+      });
   };
 
   const handlePictureClick = () => {
     setState(false);
     setLoading(true);
     setActiveState([0, 1, 0]);
+
     firebase
       .firestore()
       .collection("images")
-      .get()
-      .then((querySnapshot) => {
+      .onSnapshot((querySnapshot) => {
         let temp = [];
         querySnapshot.forEach((doc) => {
           if (doc.data().link !== undefined)
             temp.push({ id: doc.id, ...doc.data() });
         });
         setData(temp);
-      })
-      .finally(() => setLoading(false));
+        setLoading(false);
+      });
+  };
+
+  const getDay = () => {
+    switch (new Date().getDay()) {
+      case 0:
+        return "Sunday";
+      case 1:
+        return "Monday";
+      case 2:
+        return "Tuesday";
+      case 3:
+        return "Wednesday";
+      case 4:
+        return "Thursday";
+      case 5:
+        return "Friday";
+      case 6:
+        return "Saturday";
+    }
   };
 
   const handleSave = () => {
-    state
-      ? console.log("do video save query")
-      : console.log("do pic save query");
+    if (state) {
+      // video upload query
+      setUploading(true);
+
+      let id = videoURL;
+      if (videoURL.includes("player.vimeo.com")) {
+        id = videoURL.slice(videoURL.indexOf("/video/") + 7);
+        if (id.length > 9) id = id.slice(0, id.indexOf("/"));
+      } else {
+        id = videoURL.slice(videoURL.indexOf(".com/") + 5);
+        if (id.length > 9) id = id.slice(0, id.indexOf("/"));
+      }
+
+      $.ajax({
+        type: "GET",
+        url:
+          "https://vimeo.com/api/oembed.json?url=" +
+          encodeURIComponent(videoURL),
+        dataType: "json",
+        success: function (data) {
+          firebase
+            .firestore()
+            .collection("videos")
+            .doc(id)
+            .set({
+              timestamp: Date.now(),
+              day: getDay(),
+              link: `https://player.vimeo.com/video/${id}`,
+              thumbnail: data.thumbnail_url,
+            })
+            .then(() => {
+              firebase
+                .firestore()
+                .collection("videos")
+                .doc("stats")
+                .update({
+                  total: firebase.firestore.FieldValue.increment(1),
+                })
+                .then(() => {
+                  handleClose();
+                  setUploading(false);
+                  setVideoURL("");
+                })
+                .catch(() => setUploading(false));
+            })
+            .catch(() => {
+              setUploading(false);
+              alert("Video Uploading Failed !!");
+            });
+        },
+      });
+    } else {
+      // image upload query
+      handleUploadPicture();
+    }
   };
 
-  const handleDelete = () => {};
+  const handleDelete = (id) => {
+    let collection = state ? "videos" : "images";
+
+    firebase
+      .firestore()
+      .collection(collection)
+      .doc(id)
+      .delete()
+      .then(() => {
+        firebase
+          .firestore()
+          .collection(collection)
+          .doc("stats")
+          .update({
+            total: firebase.firestore.FieldValue.increment(-1),
+          });
+      })
+      .catch((error) => alert(error.message));
+  };
 
   const onFileChange = (event) => {
     setImage(event.target.files[0]);
@@ -100,6 +257,8 @@ function Home(props) {
   return (
     <>
       <style>{"body { background-color: #012443; }"}</style>
+      <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+
       <Navbar className="nav-bar" variant="dark" fixed="top">
         <Container>
           <Navbar.Brand className="nav-brand">Cypher Fitness</Navbar.Brand>
@@ -147,12 +306,18 @@ function Home(props) {
             </Modal.Body>
 
             <Modal.Footer>
-              <Button variant="danger" onClick={handleClose}>
-                Close
-              </Button>
-              <Button variant="success" onClick={handleSave}>
-                Upload
-              </Button>
+              {isUploading ? (
+                <Spinner animation="border" variant="success" />
+              ) : (
+                <>
+                  <Button variant="danger" onClick={handleClose}>
+                    Close
+                  </Button>
+                  <Button variant="success" onClick={handleSave}>
+                    Upload
+                  </Button>
+                </>
+              )}
             </Modal.Footer>
           </Modal>
           <Container
@@ -169,7 +334,7 @@ function Home(props) {
                   variant="success"
                   onClick={handleShow}
                 >
-                  Upload {state === 0 ? "Video" : "Picture"}
+                  Upload {state ? "Video" : "Picture"}
                 </Button>
               </Col>
             </Row>
@@ -203,7 +368,7 @@ function Home(props) {
                       <Button
                         style={{ alignSelf: "flex-start" }}
                         variant="danger"
-                        onClick={handleDelete}
+                        onClick={() => handleDelete(element.id)}
                       >
                         Delete
                       </Button>
