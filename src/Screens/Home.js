@@ -12,90 +12,106 @@ import {
   Spinner,
 } from "react-bootstrap";
 import firebase from "firebase";
+// import imageCompression from "browser-image-compression";
+import { handleVideoClick, handlePictureClick } from "../Handlers/handlers";
+import imageCompression from "browser-image-compression";
 
 import "../App.css";
 
 function Home(props) {
   const [state, setState] = React.useState(true);
-  const [image, setImage] = React.useState("");
+  const [imageFile, setImage] = React.useState("");
   const [data, setData] = React.useState([]);
   const [videoURL, setVideoURL] = React.useState("");
   const [show, setShow] = React.useState(false);
   const [isLoading, setLoading] = React.useState(true);
   const [activeState, setActiveState] = React.useState([1, 0, 0]);
+  const [isUploading, setUploading] = React.useState(false);
 
   const urlRef = React.createRef();
-
-  let firebaseConfig = {
-    apiKey: "AIzaSyCre61idCXicXxaI8JA9PtMX0YY0kNBq1A",
-    authDomain: "cypher-fitness.firebaseapp.com",
-    databaseURL: "https://cypher-fitness-default-rtdb.firebaseio.com",
-    projectId: "cypher-fitness",
-    storageBucket: "cypher-fitness.appspot.com",
-    messagingSenderId: "863648882260",
-    appId: "1:863648882260:web:001df02402e164f8b357c1",
-  };
-
-  // if already initialized, use that one
-  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-  else firebase.app();
 
   // handlers
   const handleClose = () => setShow(false);
   const handleShow = () => setShow(true);
 
-  const handleVideoClick = () => {
-    setState(true);
-    setLoading(true);
-    setActiveState([1, 0, 0]);
+  const handleUploadVideo = () => {};
 
-    firebase
-      .firestore()
-      .collection("videos")
-      .get()
-      .then((querySnapshot) => {
-        let temp = [];
-        querySnapshot.forEach((doc) => {
-          if (doc.data().thumbnail !== undefined)
-            temp.push({ id: doc.id, ...doc.data() });
-        });
-        setData(temp);
-      })
-      .finally(() => setLoading(false));
+  const handleUpload = () => {
+    if (state) {
+      fetch("https://player.vimeo.com/video/586377266/config").then((res) => {
+        console.log(res.json());
+      });
+    } else {
+      let reload = handleUploadPicture(imageFile, setImage, setUploading);
+
+      reload.then(() => {
+        setUploading(false);
+        setImage(NaN);
+        handlePictureClick(setData, setState, setLoading, setActiveState);
+        handleClose();
+      });
+    }
   };
 
-  const handlePictureClick = () => {
-    setState(false);
-    setLoading(true);
-    setActiveState([0, 1, 0]);
-    firebase
-      .firestore()
-      .collection("images")
-      .get()
-      .then((querySnapshot) => {
-        let temp = [];
-        querySnapshot.forEach((doc) => {
-          if (doc.data().link !== undefined)
-            temp.push({ id: doc.id, ...doc.data() });
-        });
-        setData(temp);
-      })
-      .finally(() => setLoading(false));
-  };
-
-  const handleSave = () => {
-    state
-      ? console.log("do video save query")
-      : console.log("do pic save query");
-  };
-
-  const handleDelete = () => {};
+  const handleDelete = (docId) => {};
 
   const onFileChange = (event) => {
     setImage(event.target.files[0]);
   };
 
-  useEffect(handleVideoClick, []);
+  const handleUploadPicture = async () => {
+    let downloadURL;
+    console.log(`originalFile size ${imageFile.size / 1024 / 1024} MB`);
+    if (isNaN(imageFile.size)) {
+      alert("Chooase an image!");
+      return;
+    }
+    setUploading(true);
+    const options = {
+      maxSizeMB: 1,
+      maxWidthOrHeight: 1920,
+      useWebWorker: true,
+    };
+
+    try {
+      const compressedFile = await imageCompression(imageFile, options);
+      console.log(
+        "compressedFile instanceof Blob",
+        compressedFile instanceof Blob
+      ); // true
+      console.log(
+        `compressedFile size ${compressedFile.size / 1024 / 1024} MB`
+      ); // smaller than maxSizeMB
+      var uploadTask = firebase
+        .storage()
+        .ref()
+        .child("images/" + Date.now())
+        .put(compressedFile);
+
+      uploadTask.snapshot.ref.getDownloadURL().then((url) => {
+        console.log("File available at", url);
+        firebase
+          .firestore()
+          .collection("images")
+          .add({
+            link: url,
+            timestamp: Date.now(),
+            day: new Date.getDay(),
+          })
+          .then(() => {
+            setUploading(false);
+            setImage(NaN);
+            handleClose();
+          });
+      });
+    } catch (error) {
+      console.log("Firestore eRR:" + error);
+    }
+  };
+  useEffect(
+    () => handleVideoClick(setData, setState, setLoading, setActiveState),
+    []
+  );
 
   return (
     <>
@@ -106,13 +122,22 @@ function Home(props) {
           <Nav className="me-auto">
             <Nav.Link
               active={activeState[0] ? true : false}
-              onClick={handleVideoClick}
+              onClick={() =>
+                handleVideoClick(setData, setState, setLoading, setActiveState)
+              }
             >
               Videos
             </Nav.Link>
             <Nav.Link
               active={activeState[1] ? true : false}
-              onClick={handlePictureClick}
+              onClick={() =>
+                handlePictureClick(
+                  setData,
+                  setState,
+                  setLoading,
+                  setActiveState
+                )
+              }
             >
               Pictures
             </Nav.Link>
@@ -142,7 +167,7 @@ function Home(props) {
                   </Form.Group>
                 </Form>
               ) : (
-                <input type="file" onChange={onFileChange} />
+                <input type="file" onChange={onFileChange} required />
               )}
             </Modal.Body>
 
@@ -150,9 +175,12 @@ function Home(props) {
               <Button variant="danger" onClick={handleClose}>
                 Close
               </Button>
-              <Button variant="success" onClick={handleSave}>
+              <Button variant="success" onClick={handleUpload}>
                 Upload
               </Button>
+              {isUploading ? (
+                <Spinner animation="border" variant="warning" />
+              ) : null}
             </Modal.Footer>
           </Modal>
           <Container
@@ -169,7 +197,7 @@ function Home(props) {
                   variant="success"
                   onClick={handleShow}
                 >
-                  Upload {state === 0 ? "Video" : "Picture"}
+                  Upload {state ? "Video" : "Picture"}
                 </Button>
               </Col>
             </Row>
@@ -203,7 +231,7 @@ function Home(props) {
                       <Button
                         style={{ alignSelf: "flex-start" }}
                         variant="danger"
-                        onClick={handleDelete}
+                        onClick={() => handleDelete(element.id)}
                       >
                         Delete
                       </Button>
