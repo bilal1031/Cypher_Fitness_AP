@@ -10,6 +10,8 @@ import {
   Modal,
   Form,
   Spinner,
+  InputGroup,
+  FormControl,
 } from "react-bootstrap";
 import firebase from "firebase";
 import $ from "jquery";
@@ -23,27 +25,16 @@ function Home(props) {
   const [data, setData] = React.useState([]);
   const [videoURL, setVideoURL] = React.useState("");
   const [show, setShow] = React.useState(false);
-  const [isUploading, setUploading] = useState(false);
+  const [password, setPassword] = React.useState("");
   const [isLoading, setLoading] = React.useState(true);
-  const [message, setMessage] = useState("");
+  const [err, setErr] = React.useState(false);
+  const [message, setMessage] = React.useState(false);
   const [activeState, setActiveState] = React.useState([1, 0, 0]);
+  const [isUploading, setUploading] = React.useState(false);
+  const [isAdmin, setIsAdmin] = React.useState(false);
 
   const urlRef = React.createRef();
-
-  let firebaseConfig = {
-    apiKey: "AIzaSyCre61idCXicXxaI8JA9PtMX0YY0kNBq1A",
-    authDomain: "cypher-fitness.firebaseapp.com",
-    databaseURL: "https://cypher-fitness-default-rtdb.firebaseio.com",
-    projectId: "cypher-fitness",
-    storageBucket: "cypher-fitness.appspot.com",
-    messagingSenderId: "863648882260",
-    appId: "1:863648882260:web:001df02402e164f8b357c1",
-  };
-
-  // if already initialized, use that one
-  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-  else firebase.app();
-
+  const textInput = React.createRef();
   // handlers
   const handleClose = () => setShow(false);
   const handleShow = () => setShow(true);
@@ -231,6 +222,8 @@ function Home(props) {
         return "Friday";
       case 6:
         return "Saturday";
+      default:
+        return 0;
     }
   };
 
@@ -305,7 +298,15 @@ function Home(props) {
       })
       .catch((error) => alert(error.message));
   };
-
+  const handleLogin = () => {
+    if (password === "cypher#2019") {
+      setIsAdmin(true);
+      setErr(false);
+    } else {
+      setIsAdmin(false);
+      setErr(true);
+    }
+  };
   const onFileChange = (event) => {
     setImage(event.target.files[0]);
   };
@@ -315,134 +316,189 @@ function Home(props) {
   return (
     <>
       <style>{"body { background-color: #012443; }"}</style>
-      <Navbar className="nav-bar" variant="dark" fixed="top">
-        <Container>
-          <Navbar.Brand className="nav-brand">Cypher Fitness</Navbar.Brand>
-          <Nav className="me-auto">
-            <Nav.Link
-              active={activeState[0] ? true : false}
-              onClick={handleVideoClick}
-            >
-              Videos
-            </Nav.Link>
-            <Nav.Link
-              active={activeState[1] ? true : false}
-              onClick={handlePictureClick}
-            >
-              Pictures
-            </Nav.Link>
-          </Nav>
+
+      {!isAdmin ? (
+        <Container
+          fluid="md"
+          className="d-flex flex-column align-items-center justify-content-between mt-5"
+        >
+          <Row>
+            <Col md={3}>
+              <img alt="" src="/logo512.png" height={190} width={200} />
+            </Col>
+          </Row>
+          <Row className="mt-5">
+            <Col className="d-flex flex-column align-items-center p-2">
+              {err && (
+                <h5 style={{ color: "tomato" }}>
+                  Login Failed. Wrong Password!!!
+                </h5>
+              )}
+              <InputGroup className="textInput">
+                <FormControl
+                  placeholder="Password...."
+                  type="password"
+                  aria-label="password"
+                  aria-describedby="basic-addon2"
+                  ref={textInput}
+                  onChange={() => setPassword(textInput.current.value)}
+                  value={password}
+                />
+              </InputGroup>
+              <Button
+                style={{
+                  width: 100,
+                  marginTop: 20,
+                }}
+                variant="light"
+                onClick={handleLogin}
+              >
+                LogIn
+              </Button>
+            </Col>
+          </Row>
         </Container>
-      </Navbar>
-
-      {isLoading === false ? (
-        <>
-          <Modal show={show} onHide={handleClose}>
-            <Modal.Header closeButton>
-              <Modal.Title>Add {state ? "Video" : "Picture"}</Modal.Title>
-            </Modal.Header>
-
-            <Modal.Body>
-              {state ? (
-                <Form>
-                  <Form.Group controlId="formBasicEmail">
-                    <Form.Label>Video Url</Form.Label>
-                    <Form.Control
-                      type="text"
-                      placeholder="Enter vimeo URL"
-                      onChange={() => setVideoURL(urlRef.current.value)}
-                      ref={urlRef}
-                      value={videoURL}
-                    />
-                  </Form.Group>
-                </Form>
-              ) : (
-                <input type="file" onChange={onFileChange} />
-              )}
-            </Modal.Body>
-
-            <Modal.Footer>
-              {isUploading ? (
-                <>
-                  <Spinner animation="border" variant="success" />{" "}
-                  <span style={{ color: "#157347" }}>{message}</span>
-                </>
-              ) : (
-                <>
-                  <Button variant="danger" onClick={handleClose}>
-                    Close
-                  </Button>
-                  <Button variant="success" onClick={handleSave}>
-                    Upload
-                  </Button>
-                </>
-              )}
-            </Modal.Footer>
-          </Modal>
-          <Container
-            style={{
-              marginTop: 70,
-              justifyContent: "center",
-            }}
-            fluid="md"
-          >
-            <Row className="mt-1">
-              <Col lg={true} className="d-flex justify-content-end">
-                <Button
-                  className="add_button"
-                  variant="success"
-                  onClick={handleShow}
-                >
-                  Upload {state ? "Video" : "Picture"}
-                </Button>
-              </Col>
-            </Row>
-            <Row className="mt-1">
-              {data.map((element) => (
-                <Col
-                  md={3}
-                  style={{ justifyContent: "center", padding: 10 }}
-                  key={element.id}
-                >
-                  <Card className="card">
-                    {state ? (
-                      <Card.Header style={{ width: "100%" }}>
-                        <iframe
-                          title="veimoPlayer"
-                          src={element.link}
-                          frameBorder="0"
-                          allow="autoplay; fullscreen"
-                          allowFullScreen
-                        ></iframe>
-                      </Card.Header>
-                    ) : (
-                      <Card.Img
-                        variant="top"
-                        className="photo"
-                        src={element.link}
-                      />
-                    )}
-
-                    <Card.Body>
-                      <Button
-                        style={{ alignSelf: "flex-start" }}
-                        variant="danger"
-                        onClick={() => handleDelete(element.id)}
-                      >
-                        Delete
-                      </Button>
-                    </Card.Body>
-                  </Card>
-                </Col>
-              ))}
-            </Row>
-          </Container>
-        </>
       ) : (
         <>
-          <div className="centered">
-            <Spinner animation="grow" variant="light" />
-          </div>
+          {" "}
+          <Navbar className="nav-bar" variant="dark" fixed="top">
+            <Container>
+              <Navbar.Brand className="nav-brand">
+                <img
+                  alt=""
+                  src="/logo192.png"
+                  width="32"
+                  height="32"
+                  className="d-inline-block align-top"
+                />{" "}
+                Cypher Fitness
+              </Navbar.Brand>
+              <Nav className="me-auto">
+                <Nav.Link
+                  active={activeState[0] ? true : false}
+                  onClick={() => handleVideoClick()}
+                >
+                  Videos
+                </Nav.Link>
+                <Nav.Link
+                  active={activeState[1] ? true : false}
+                  onClick={() => handlePictureClick()}
+                >
+                  Pictures
+                </Nav.Link>
+                <Nav.Link onClick={() => setIsAdmin(false)}>Logout</Nav.Link>
+              </Nav>
+            </Container>
+          </Navbar>
+          {isLoading === false ? (
+            <>
+              <Modal show={show} onHide={handleClose}>
+                <Modal.Header closeButton>
+                  <Modal.Title>
+                    Add {state === 0 ? "Video" : "Picture"}
+                  </Modal.Title>
+                </Modal.Header>
+
+                <Modal.Body>
+                  {state ? (
+                    <Form>
+                      <Form.Group controlId="formBasicEmail">
+                        <Form.Label>Video Url</Form.Label>
+                        <Form.Control
+                          type="text"
+                          placeholder="Enter viemo url"
+                          onChange={() => setVideoURL(urlRef.current.value)}
+                          ref={urlRef}
+                          value={videoURL}
+                        />
+                      </Form.Group>
+                    </Form>
+                  ) : (
+                    <input type="file" onChange={onFileChange} required />
+                  )}
+                </Modal.Body>
+
+                <Modal.Footer>
+                  {isUploading ? (
+                    <Spinner animation="border" variant="success" />
+                  ) : (
+                    <>
+                      <Button variant="danger" onClick={handleClose}>
+                        Close
+                      </Button>
+                      <Button variant="success" onClick={handleSave}>
+                        Upload
+                      </Button>
+                    </>
+                  )}
+                </Modal.Footer>
+              </Modal>
+              <Container
+                style={{
+                  marginTop: 70,
+                  justifyContent: "center",
+                }}
+                fluid="md"
+              >
+                <Row className="mt-1">
+                  <Col lg={true} className="d-flex justify-content-end">
+                    <Button
+                      className="add_button"
+                      variant="success"
+                      onClick={handleShow}
+                    >
+                      Upload {state ? "Video" : "Picture"}
+                    </Button>
+                  </Col>
+                </Row>
+                <Row className="mt-1">
+                  {data.map((element) => (
+                    <Col
+                      md={3}
+                      style={{ justifyContent: "center", padding: 10 }}
+                      key={element.id}
+                    >
+                      <Card className="card">
+                        {state ? (
+                          <Card.Header style={{ width: "100%" }}>
+                            <iframe
+                              title="veimoPlayer"
+                              src={element.link}
+                              frameBorder="0"
+                              allow="autoplay; fullscreen"
+                              allowFullScreen
+                            ></iframe>
+                          </Card.Header>
+                        ) : (
+                          <Card.Img
+                            variant="top"
+                            className="photo"
+                            src={element.link}
+                          />
+                        )}
+
+                        <Card.Body>
+                          <Button
+                            style={{ alignSelf: "flex-start" }}
+                            variant="danger"
+                            onClick={() => handleDelete(element.id)}
+                          >
+                            Delete
+                          </Button>
+                        </Card.Body>
+                      </Card>
+                    </Col>
+                  ))}
+                </Row>
+              </Container>
+            </>
+          ) : (
+            <>
+              <div className="centered">
+                <Spinner animation="grow" variant="light" />
+              </div>
+            </>
+          )}
         </>
       )}
     </>

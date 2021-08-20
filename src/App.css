@@ -17,7 +17,10 @@ iframe {
   width: 100%;
   border: 0px;
 }
-
+.textInput {
+  min-width: 250px;
+  max-width: 350px;
+}
 .card {
   display: flex;
   border: none;
