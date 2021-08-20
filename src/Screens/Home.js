@@ -420,7 +420,10 @@ function Home(props) {
 
                 <Modal.Footer>
                   {isUploading ? (
-                    <Spinner animation="border" variant="success" />
+                    <>
+                      <Spinner animation="border" variant="success" />{" "}
+                      <span style={{ color: "#157347" }}>{message}</span>
+                    </>
                   ) : (
                     <>
                       <Button variant="danger" onClick={handleClose}>
