@@ -25,6 +25,7 @@ function Home(props) {
   const [show, setShow] = React.useState(false);
   const [isUploading, setUploading] = useState(false);
   const [isLoading, setLoading] = React.useState(true);
+  const [message, setMessage] = useState("");
   const [activeState, setActiveState] = React.useState([1, 0, 0]);
 
   const urlRef = React.createRef();
@@ -47,10 +48,71 @@ function Home(props) {
   const handleClose = () => setShow(false);
   const handleShow = () => setShow(true);
 
+  const incrementToken = (token, count) => {
+    firebase
+      .database()
+      .ref("pushTokens/" + token)
+      .set({
+        token,
+        count: count + 1,
+      });
+  };
+
+  const sendNotifications = (body) => {
+    setMessage("Sending Notifications...");
+
+    firebase
+      .database()
+      .ref("pushTokens")
+      .get()
+      .then((snapshot) => {
+        if (snapshot.exists()) {
+          const tokenObjects = snapshot.val();
+          let token = "";
+          let count = 0;
+
+          Object.values(tokenObjects).forEach((tokenObj) => {
+            token = tokenObj.token;
+            count = tokenObj.count;
+            incrementToken(token, count);
+
+            fetch("https://exp.host/--/api/v2/push/send", {
+              method: "POST",
+              body: JSON.stringify({
+                to: [`ExponentPushToken[${token}]`],
+                title: "Cypher Fitness",
+                body: body,
+                badge: count + 1,
+                data: { count, token },
+                sound: "default",
+                priority: "high",
+                "content-available": 1,
+                channelId: "default",
+              }),
+            });
+          });
+        }
+      })
+      .then(() => {
+        setMessage("");
+        setUploading(false);
+        setVideoURL("");
+        handleClose();
+      })
+      .catch(() => {
+        setMessage("");
+        setUploading(false);
+        setVideoURL("");
+        handleClose();
+        alert("Sending Notificatins Failed !!");
+      });
+  };
+
   const handleUploadPicture = async () => {
     // console.log(`originalFile size ${image.size / 1024 / 1024} MB`);
     if (isNaN(image.size)) return alert("Choose an image!");
     setUploading(true);
+    setMessage("Compressing Image...");
 
     try {
       const compressedFile = await imageCompression(image, {
@@ -67,6 +129,7 @@ function Home(props) {
       //   `compressedFile size ${compressedFile.size / 1024 / 1024} MB`
       // );
 
+      setMessage("Uploading Image...");
       firebase
         .storage()
         .ref("images/Cypher" + Date.now())
@@ -90,8 +153,9 @@ function Home(props) {
                     total: firebase.firestore.FieldValue.increment(1),
                   })
                   .then(() => {
-                    handleClose();
-                    setUploading(false);
+                    sendNotifications(
+                      "Checkout new daily motivational quote.."
+                    );
                     setImage(NaN);
                   })
                   .catch(() => {
@@ -174,15 +238,11 @@ function Home(props) {
     if (state) {
       // video upload query
       setUploading(true);
+      setMessage("Uploading Video...");
 
       let id = videoURL;
-      if (videoURL.includes("player.vimeo.com")) {
-        id = videoURL.slice(videoURL.indexOf("/video/") + 7);
-        if (id.length > 9) id = id.slice(0, id.indexOf("/"));
-      } else {
-        id = videoURL.slice(videoURL.indexOf(".com/") + 5);
-        if (id.length > 9) id = id.slice(0, id.indexOf("/"));
-      }
+      id = videoURL.slice(videoURL.indexOf(".com/") + 5);
+      if (id.length > 9) id = id.slice(0, id.indexOf("/"));
 
       $.ajax({
         type: "GET",
@@ -210,9 +270,7 @@ function Home(props) {
                   total: firebase.firestore.FieldValue.increment(1),
                 })
                 .then(() => {
-                  handleClose();
-                  setUploading(false);
-                  setVideoURL("");
+                  sendNotifications("Checkout new choreography video..");
                 })
                 .catch(() => setUploading(false));
             })
@@ -257,8 +315,6 @@ function Home(props) {
   return (
     <>
       <style>{"body { background-color: #012443; }"}</style>
-      <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-
       <Navbar className="nav-bar" variant="dark" fixed="top">
         <Container>
           <Navbar.Brand className="nav-brand">Cypher Fitness</Navbar.Brand>
@@ -283,7 +339,7 @@ function Home(props) {
         <>
           <Modal show={show} onHide={handleClose}>
             <Modal.Header closeButton>
-              <Modal.Title>Add {state === 0 ? "Video" : "Picture"}</Modal.Title>
+              <Modal.Title>Add {state ? "Video" : "Picture"}</Modal.Title>
             </Modal.Header>
 
             <Modal.Body>
@@ -293,7 +349,7 @@ function Home(props) {
                     <Form.Label>Video Url</Form.Label>
                     <Form.Control
                       type="text"
-                      placeholder="Enter viemo url"
+                      placeholder="Enter vimeo URL"
                       onChange={() => setVideoURL(urlRef.current.value)}
                       ref={urlRef}
                       value={videoURL}
@@ -307,7 +363,10 @@ function Home(props) {
 
             <Modal.Footer>
               {isUploading ? (
-                <Spinner animation="border" variant="success" />
+                <>
+                  <Spinner animation="border" variant="success" />{" "}
+                  <span style={{ color: "#157347" }}>{message}</span>
+                </>
               ) : (
                 <>
                   <Button variant="danger" onClick={handleClose}>
