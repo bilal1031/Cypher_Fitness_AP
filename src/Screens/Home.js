@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Navbar,
   Container,
@@ -12,15 +12,14 @@ import {
   Spinner,
 } from "react-bootstrap";
 import firebase from "firebase";
-// import imageCompression from "browser-image-compression";
-import { handleVideoClick, handlePictureClick } from "../Handlers/handlers";
+import $ from "jquery";
 import imageCompression from "browser-image-compression";
 
 import "../App.css";
 
 function Home(props) {
   const [state, setState] = React.useState(true);
-  const [imageFile, setImage] = React.useState("");
+  const [image, setImage] = React.useState("");
   const [data, setData] = React.useState([]);
   const [videoURL, setVideoURL] = React.useState("");
   const [show, setShow] = React.useState(false);
@@ -34,88 +33,220 @@ function Home(props) {
   const handleClose = () => setShow(false);
   const handleShow = () => setShow(true);
 
-  const handleUploadVideo = () => {};
+  const handleUploadPicture = async () => {
+    // console.log(`originalFile size ${image.size / 1024 / 1024} MB`);
+    if (isNaN(image.size)) return alert("Choose an image!");
+    setUploading(true);
 
-  const handleUpload = () => {
-    if (state) {
-      fetch("https://player.vimeo.com/video/586377266/config").then((res) => {
-        console.log(res.json());
+    try {
+      const compressedFile = await imageCompression(image, {
+        maxSizeMB: 1,
+        maxWidthOrHeight: 1920,
+        useWebWorker: true,
       });
-    } else {
-      let reload = handleUploadPicture(imageFile, setImage, setUploading);
 
-      reload.then(() => {
-        setUploading(false);
-        setImage(NaN);
-        handlePictureClick(setData, setState, setLoading, setActiveState);
-        handleClose();
-      });
+      // console.log(
+      //   "compressedFile instanceof Blob",
+      //   compressedFile instanceof Blob
+      // ); // true
+      // console.log(
+      //   `compressedFile size ${compressedFile.size / 1024 / 1024} MB`
+      // );
+
+      firebase
+        .storage()
+        .ref("images/Cypher" + Date.now())
+        .put(compressedFile)
+        .then((snapshot) => {
+          snapshot.ref.getDownloadURL().then((url) => {
+            firebase
+              .firestore()
+              .collection("images")
+              .add({
+                link: url,
+                timestamp: Date.now(),
+                day: getDay(),
+              })
+              .then(() => {
+                firebase
+                  .firestore()
+                  .collection("images")
+                  .doc("stats")
+                  .update({
+                    total: firebase.firestore.FieldValue.increment(1),
+                  })
+                  .then(() => {
+                    handleClose();
+                    setUploading(false);
+                    setImage(NaN);
+                  })
+                  .catch(() => {
+                    setUploading(false);
+                  });
+              })
+              .catch((error) => {
+                setUploading(false);
+                alert("Image Uploading Failed !!");
+              });
+          });
+        })
+        .catch((error) => {
+          setUploading(false);
+          alert("Image Uploading Failed !!");
+        });
+    } catch (error) {
+      alert("Image Uploading Failed !!");
     }
   };
 
-  const handleDelete = (docId) => {};
+  const handleVideoClick = () => {
+    setState(true);
+    setLoading(true);
+    setActiveState([1, 0, 0]);
+
+    firebase
+      .firestore()
+      .collection("videos")
+      .onSnapshot((querySnapshot) => {
+        let temp = [];
+        querySnapshot.forEach((doc) => {
+          if (doc.data().thumbnail !== undefined)
+            temp.push({ id: doc.id, ...doc.data() });
+        });
+        setData(temp);
+        setLoading(false);
+      });
+  };
+
+  const handlePictureClick = () => {
+    setState(false);
+    setLoading(true);
+    setActiveState([0, 1, 0]);
+
+    firebase
+      .firestore()
+      .collection("images")
+      .onSnapshot((querySnapshot) => {
+        let temp = [];
+        querySnapshot.forEach((doc) => {
+          if (doc.data().link !== undefined)
+            temp.push({ id: doc.id, ...doc.data() });
+        });
+        setData(temp);
+        setLoading(false);
+      });
+  };
+
+  const getDay = () => {
+    switch (new Date().getDay()) {
+      case 0:
+        return "Sunday";
+      case 1:
+        return "Monday";
+      case 2:
+        return "Tuesday";
+      case 3:
+        return "Wednesday";
+      case 4:
+        return "Thursday";
+      case 5:
+        return "Friday";
+      case 6:
+        return "Saturday";
+      default:
+        return 0;
+    }
+  };
+
+  const handleSave = () => {
+    if (state) {
+      // video upload query
+      setUploading(true);
+
+      let id = videoURL;
+      if (videoURL.includes("player.vimeo.com")) {
+        id = videoURL.slice(videoURL.indexOf("/video/") + 7);
+        if (id.length > 9) id = id.slice(0, id.indexOf("/"));
+      } else {
+        id = videoURL.slice(videoURL.indexOf(".com/") + 5);
+        if (id.length > 9) id = id.slice(0, id.indexOf("/"));
+      }
+
+      $.ajax({
+        type: "GET",
+        url:
+          "https://vimeo.com/api/oembed.json?url=" +
+          encodeURIComponent(videoURL),
+        dataType: "json",
+        success: function (data) {
+          firebase
+            .firestore()
+            .collection("videos")
+            .doc(id)
+            .set({
+              timestamp: Date.now(),
+              day: getDay(),
+              link: `https://player.vimeo.com/video/${id}`,
+              thumbnail: data.thumbnail_url,
+            })
+            .then(() => {
+              firebase
+                .firestore()
+                .collection("videos")
+                .doc("stats")
+                .update({
+                  total: firebase.firestore.FieldValue.increment(1),
+                })
+                .then(() => {
+                  handleClose();
+                  setUploading(false);
+                  setVideoURL("");
+                })
+                .catch(() => setUploading(false));
+            })
+            .catch(() => {
+              setUploading(false);
+              alert("Video Uploading Failed !!");
+            });
+        },
+      });
+    } else {
+      // image upload query
+      handleUploadPicture();
+    }
+  };
+
+  const handleDelete = (id) => {
+    let collection = state ? "videos" : "images";
+
+    firebase
+      .firestore()
+      .collection(collection)
+      .doc(id)
+      .delete()
+      .then(() => {
+        firebase
+          .firestore()
+          .collection(collection)
+          .doc("stats")
+          .update({
+            total: firebase.firestore.FieldValue.increment(-1),
+          });
+      })
+      .catch((error) => alert(error.message));
+  };
 
   const onFileChange = (event) => {
     setImage(event.target.files[0]);
   };
 
-  const handleUploadPicture = async () => {
-    let downloadURL;
-    console.log(`originalFile size ${imageFile.size / 1024 / 1024} MB`);
-    if (isNaN(imageFile.size)) {
-      alert("Chooase an image!");
-      return;
-    }
-    setUploading(true);
-    const options = {
-      maxSizeMB: 1,
-      maxWidthOrHeight: 1920,
-      useWebWorker: true,
-    };
-
-    try {
-      const compressedFile = await imageCompression(imageFile, options);
-      console.log(
-        "compressedFile instanceof Blob",
-        compressedFile instanceof Blob
-      ); // true
-      console.log(
-        `compressedFile size ${compressedFile.size / 1024 / 1024} MB`
-      ); // smaller than maxSizeMB
-      var uploadTask = firebase
-        .storage()
-        .ref()
-        .child("images/" + Date.now())
-        .put(compressedFile);
-
-      uploadTask.snapshot.ref.getDownloadURL().then((url) => {
-        console.log("File available at", url);
-        firebase
-          .firestore()
-          .collection("images")
-          .add({
-            link: url,
-            timestamp: Date.now(),
-            day: new Date.getDay(),
-          })
-          .then(() => {
-            setUploading(false);
-            setImage(NaN);
-            handleClose();
-          });
-      });
-    } catch (error) {
-      console.log("Firestore eRR:" + error);
-    }
-  };
-  useEffect(
-    () => handleVideoClick(setData, setState, setLoading, setActiveState),
-    []
-  );
+  useEffect(handleVideoClick, []);
 
   return (
     <>
       <style>{"body { background-color: #012443; }"}</style>
+      <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+
       <Navbar className="nav-bar" variant="dark" fixed="top">
         <Container>
           <Navbar.Brand className="nav-brand">Cypher Fitness</Navbar.Brand>
@@ -172,15 +303,18 @@ function Home(props) {
             </Modal.Body>
 
             <Modal.Footer>
-              <Button variant="danger" onClick={handleClose}>
-                Close
-              </Button>
-              <Button variant="success" onClick={handleUpload}>
-                Upload
-              </Button>
               {isUploading ? (
-                <Spinner animation="border" variant="warning" />
-              ) : null}
+                <Spinner animation="border" variant="success" />
+              ) : (
+                <>
+                  <Button variant="danger" onClick={handleClose}>
+                    Close
+                  </Button>
+                  <Button variant="success" onClick={handleSave}>
+                    Upload
+                  </Button>
+                </>
+              )}
             </Modal.Footer>
           </Modal>
           <Container
