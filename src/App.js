@@ -4,13 +4,12 @@ import firebase from "firebase";
 
 function App() {
   let firebaseConfig = {
-    apiKey: "AIzaSyCre61idCXicXxaI8JA9PtMX0YY0kNBq1A",
-    authDomain: "cypher-fitness.firebaseapp.com",
-    databaseURL: "https://cypher-fitness-default-rtdb.firebaseio.com",
-    projectId: "cypher-fitness",
-    storageBucket: "cypher-fitness.appspot.com",
-    messagingSenderId: "863648882260",
-    appId: "1:863648882260:web:001df02402e164f8b357c1",
+    apiKey: "AIzaSyCTUtkjszCTIJ_VR3jxh8f0THG3OADp8u0",
+    authDomain: "cypher-fitness-admin.firebaseapp.com",
+    projectId: "cypher-fitness-admin",
+    storageBucket: "cypher-fitness-admin.appspot.com",
+    messagingSenderId: "461205302016",
+    appId: "1:461205302016:web:6edccc6fc30e251d59a1e5",
   };
 
   // if already initialized, use that one
